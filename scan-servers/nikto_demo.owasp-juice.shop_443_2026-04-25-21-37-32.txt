@@ -1,0 +1,18 @@
+- Nikto v2.6.0/
++ Target Host: demo.owasp-juice.shop
++ Target Port: 443
++ GET /: Retrieved via header: 1.1 heroku-router.
++ GET /: Uncommon header(s) 'reporting-endpoints' found, with contents: heroku-nel="https://nel.heroku.com/reports?s=MsDxqUhZYvXN2GqUfiE0D8ewZkZP8XRh7V61Usb60gU%3D&sid=812dcc77-0bd0-43b1-a5f1-b25750382959&ts=1777142259".
++ SSL Info:           Subject:  /CN=*.owasp-juice.shop
+                      CN:       *.owasp-juice.shop
+                      SAN:      *.owasp-juice.shop, owasp-juice.shop
+                      Ciphers:  TLS_AES_256_GCM_SHA384
+                      Issuer:   /C=GB/O=Sectigo Limited/CN=Sectigo Public Server Authentication CA DV R36
++ GET /index.php5: Retrieved access-control-allow-origin header: *.
++ GET /index.php5: Uncommon header(s) 'x-recruiting' found, with contents: /#/jobs.
++ GET /: Server banner changed from 'Heroku' to 'Apache/2.4.66 (Unix)'.
++ GET /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options: 
++ GET /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security: 
++ GET /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy: 
++ GET /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy: 
++ GET /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP: 

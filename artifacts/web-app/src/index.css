@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 216 28% 7%;
+    --foreground: 210 40% 92%;
+
+    --card: 215 25% 10%;
+    --card-foreground: 210 40% 92%;
+
+    --popover: 215 25% 10%;
+    --popover-foreground: 210 40% 92%;
+
+    --primary: 190 90% 50%;
+    --primary-foreground: 216 28% 7%;
+
+    --secondary: 215 20% 16%;
+    --secondary-foreground: 210 40% 92%;
+
+    --muted: 215 20% 16%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 215 20% 16%;
+    --accent-foreground: 210 40% 92%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 20% 18%;
+    --input: 215 20% 18%;
+    --ring: 190 90% 50%;
+
+    --radius: 0.5rem;
+
+    /* Severity colors */
+    --severity-critical: 0 72% 55%;
+    --severity-high: 25 95% 55%;
+    --severity-medium: 45 95% 55%;
+    --severity-low: 150 60% 45%;
+    --severity-very-low: 210 15% 55%;
+
+    /* Chart colors */
+    --chart-critical: 0 72% 55%;
+    --chart-high: 25 95% 55%;
+    --chart-medium: 210 70% 55%;
+    --chart-low: 150 70% 50%;
+    --chart-green: 150 90% 45%;
+    --chart-cyan: 180 70% 50%;
+    --chart-orange: 30 90% 55%;
+    --chart-pink: 340 70% 55%;
+    --chart-purple: 270 60% 55%;
+    --chart-yellow: 50 95% 55%;
+
+    --sidebar-background: 215 28% 9%;
+    --sidebar-foreground: 210 20% 70%;
+    --sidebar-primary: 190 90% 50%;
+    --sidebar-primary-foreground: 216 28% 7%;
+    --sidebar-accent: 215 25% 14%;
+    --sidebar-accent-foreground: 210 40% 92%;
+    --sidebar-border: 215 20% 15%;
+    --sidebar-ring: 190 90% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}

@@ -1,0 +1,1188 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Vulnerability Management Platform API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication
+  - name: users
+    description: User management
+  - name: scans
+    description: Scan results
+  - name: vulnerabilities
+    description: Vulnerability records
+  - name: nvd
+    description: NVD CVE database
+  - name: exploits
+    description: Exploit-DB records
+  - name: logs
+    description: System logs
+  - name: dashboard
+    description: Dashboard summary
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserPublic"
+
+  /users/invite:
+    post:
+      operationId: inviteUser
+      tags: [users]
+      summary: Invite a new user (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteUserBody"
+      responses:
+        "201":
+          description: User invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a single user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a user (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /scans:
+    get:
+      operationId: getScans
+      tags: [scans]
+      summary: List all scan results
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed]
+        - name: tool
+          in: query
+          schema:
+            type: string
+            enum: [nmap, sqlmap, nikto, ffuf, other]
+      responses:
+        "200":
+          description: List of scans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScanResult"
+    post:
+      operationId: createScan
+      tags: [scans]
+      summary: Submit a new scan result
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScanBody"
+      responses:
+        "201":
+          description: Scan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /scans/{id}:
+    get:
+      operationId: getScan
+      tags: [scans]
+      summary: Get a scan by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Scan record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateScan
+      tags: [scans]
+      summary: Update scan status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScanBody"
+      responses:
+        "200":
+          description: Updated scan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteScan
+      tags: [scans]
+      summary: Delete a scan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /scans/{id}/vulnerabilities:
+    get:
+      operationId: getScanVulnerabilities
+      tags: [scans]
+      summary: Get vulnerabilities for a specific scan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of vulnerabilities for the scan
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vulnerability"
+
+  /vulnerabilities:
+    get:
+      operationId: getVulnerabilities
+      tags: [vulnerabilities]
+      summary: List all vulnerabilities
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low, info]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, resolved, accepted]
+      responses:
+        "200":
+          description: List of vulnerabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vulnerability"
+    post:
+      operationId: createVulnerability
+      tags: [vulnerabilities]
+      summary: Create a vulnerability record
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVulnerabilityBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vulnerability"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /vulnerabilities/{id}:
+    get:
+      operationId: getVulnerability
+      tags: [vulnerabilities]
+      summary: Get a vulnerability by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Vulnerability record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vulnerability"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateVulnerability
+      tags: [vulnerabilities]
+      summary: Update vulnerability status or details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVulnerabilityBody"
+      responses:
+        "200":
+          description: Updated vulnerability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vulnerability"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteVulnerability
+      tags: [vulnerabilities]
+      summary: Delete a vulnerability
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nvd/cves:
+    get:
+      operationId: getNvdCves
+      tags: [nvd]
+      summary: List NVD CVE records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of CVEs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvdCveListResponse"
+
+  /nvd/cves/{cveId}:
+    get:
+      operationId: getNvdCve
+      tags: [nvd]
+      summary: Get a specific CVE from NVD
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cveId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CVE record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvdCve"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nvd/sync:
+    post:
+      operationId: triggerNvdSync
+      tags: [nvd]
+      summary: Manually trigger NVD data sync (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatusResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /exploits:
+    get:
+      operationId: getExploits
+      tags: [exploits]
+      summary: List exploit records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cveId
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of exploits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExploitListResponse"
+
+  /exploits/{id}:
+    get:
+      operationId: getExploit
+      tags: [exploits]
+      summary: Get a specific exploit
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Exploit record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exploit"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /exploits/sync:
+    post:
+      operationId: triggerExploitSync
+      tags: [exploits]
+      summary: Manually trigger Exploit-DB sync (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatusResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /logs:
+    get:
+      operationId: getSystemLogs
+      tags: [logs]
+      summary: List system logs (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SystemLog"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard summary stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserPublic"
+      required:
+        - token
+        - user
+
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: ["string", "null"]
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user]
+        joinedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - id
+        - email
+        - role
+
+    InviteUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user]
+      required:
+        - name
+        - email
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+
+    ScanResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        target:
+          type: string
+        tool:
+          type: string
+          enum: [nmap, sqlmap, nikto, ffuf, other]
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        description:
+          type: ["string", "null"]
+        options:
+          type: ["string", "null"]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: ["string", "null"]
+          format: date-time
+        user_id:
+          type: ["string", "null"]
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        critical_count:
+          type: integer
+          default: 0
+        high_count:
+          type: integer
+          default: 0
+        medium_count:
+          type: integer
+          default: 0
+        low_count:
+          type: integer
+          default: 0
+        total_findings:
+          type: integer
+          default: 0
+      required:
+        - id
+        - name
+        - target
+        - tool
+        - status
+        - started_at
+        - created_at
+        - critical_count
+        - high_count
+        - medium_count
+        - low_count
+        - total_findings
+
+    CreateScanBody:
+      type: object
+      properties:
+        name:
+          type: string
+        target:
+          type: string
+        tool:
+          type: string
+          enum: [nmap, sqlmap, nikto, ffuf, other]
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        description:
+          type: string
+        options:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        criticalCount:
+          type: integer
+          default: 0
+        highCount:
+          type: integer
+          default: 0
+        mediumCount:
+          type: integer
+          default: 0
+        lowCount:
+          type: integer
+          default: 0
+        totalFindings:
+          type: integer
+          default: 0
+      required:
+        - name
+        - target
+        - tool
+
+    UpdateScanBody:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        completedAt:
+          type: string
+          format: date-time
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        mediumCount:
+          type: integer
+        lowCount:
+          type: integer
+        totalFindings:
+          type: integer
+
+    Vulnerability:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        cve_id:
+          type: string
+        cvss_severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [open, in_progress, resolved, accepted]
+        exploit_status:
+          type: string
+        exprt_rating:
+          type: string
+        remediations:
+          type: integer
+          default: 0
+        vulnerability_count:
+          type: integer
+          default: 1
+        description:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - cve_id
+        - cvss_severity
+        - status
+        - exploit_status
+        - exprt_rating
+        - remediations
+        - vulnerability_count
+        - created_at
+
+    CreateVulnerabilityBody:
+      type: object
+      properties:
+        cveId:
+          type: string
+        cvss_severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [open, in_progress, resolved, accepted]
+        exploit_status:
+          type: string
+        exprt_rating:
+          type: string
+        remediations:
+          type: integer
+        vulnerability_count:
+          type: integer
+        description:
+          type: string
+      required:
+        - cveId
+
+    UpdateVulnerabilityBody:
+      type: object
+      properties:
+        cveId:
+          type: string
+        cvss_severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [open, in_progress, resolved, accepted]
+        exploit_status:
+          type: string
+        exprt_rating:
+          type: string
+        remediations:
+          type: integer
+        vulnerability_count:
+          type: integer
+        description:
+          type: string
+
+    NvdCve:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        cve_id:
+          type: string
+        description:
+          type: ["string", "null"]
+        cvss_score:
+          type: ["number", "null"]
+        severity:
+          type: ["string", "null"]
+        published_date:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - cve_id
+        - created_at
+
+    NvdCveListResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NvdCve"
+      required:
+        - total
+        - items
+
+    Exploit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        exploit_id:
+          type: string
+        description:
+          type: ["string", "null"]
+        cve_id:
+          type: ["string", "null"]
+        file_path:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - exploit_id
+        - created_at
+
+    ExploitListResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exploit"
+      required:
+        - total
+        - items
+
+    SystemLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        message:
+          type: string
+        level:
+          type: string
+          default: info
+        timestamp:
+          type: string
+          format: date-time
+        sort_order:
+          type: integer
+          default: 0
+      required:
+        - id
+        - message
+        - timestamp
+
+    SyncStatusResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+      required:
+        - message
+        - status
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalScans:
+          type: integer
+        totalVulnerabilities:
+          type: integer
+        openVulnerabilities:
+          type: integer
+        criticalVulnerabilities:
+          type: integer
+        totalUsers:
+          type: integer
+        totalCves:
+          type: integer
+        totalExploits:
+          type: integer
+        recentScans:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanResult"
+        severityCounts:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+        - totalScans
+        - totalVulnerabilities
+        - openVulnerabilities
+        - criticalVulnerabilities
+        - totalUsers
+        - totalCves
+        - totalExploits
+        - recentScans
+        - severityCounts
