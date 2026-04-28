@@ -53,6 +53,8 @@ export default {
           medium: "hsl(var(--severity-medium))",
           low: "hsl(var(--severity-low))",
           verylow: "hsl(var(--severity-very-low))",
+          info: "hsl(var(--severity-info))",
+          none: "hsl(var(--severity-none))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",

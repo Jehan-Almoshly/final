@@ -42,6 +42,8 @@
     --severity-medium: 45 95% 55%;
     --severity-low: 150 60% 45%;
     --severity-very-low: 210 15% 55%;
+    --severity-info: 270 70% 60%;
+    --severity-none: 270 70% 60%;
 
     /* Chart colors */
     --chart-critical: 0 72% 55%;

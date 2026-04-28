@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,16 +17,70 @@ const filterTags = [
   "CVSS complexity",
 ];
 
-const exploitStyles: Record<string, string> = {
-  "Actively used": "bg-severity-critical/15 text-severity-critical",
-  "Available": "bg-severity-high/15 text-severity-high",
+type SeverityKey = "Critical" | "High" | "Medium" | "Low" | "Info" | "None";
+
+const severityStyles: Record<SeverityKey, { dot: string; text: string }> = {
+  Critical: { dot: "bg-severity-critical", text: "text-severity-critical" },
+  High: { dot: "bg-severity-high", text: "text-severity-high" },
+  Medium: { dot: "bg-severity-medium", text: "text-severity-medium" },
+  Low: { dot: "bg-severity-low", text: "text-severity-low" },
+  Info: { dot: "bg-severity-info", text: "text-severity-info" },
+  None: { dot: "bg-severity-none", text: "text-severity-none" },
 };
 
-const severityStyles: Record<string, string> = {
-  Critical: "text-severity-critical",
-  High: "text-severity-high",
-  Medium: "text-severity-medium",
-  Low: "text-severity-low",
+const fallbackStyle = { dot: "bg-muted-foreground", text: "text-muted-foreground" };
+
+const exploitStyles: Record<string, { dot: string; text: string; bg: string }> = {
+  "Actively used": {
+    dot: "bg-severity-critical",
+    text: "text-severity-critical",
+    bg: "bg-severity-critical/15",
+  },
+  Available: {
+    dot: "bg-severity-high",
+    text: "text-severity-high",
+    bg: "bg-severity-high/15",
+  },
+  Unproven: {
+    dot: "bg-severity-medium",
+    text: "text-severity-medium",
+    bg: "bg-severity-medium/15",
+  },
+  None: {
+    dot: "bg-severity-none",
+    text: "text-severity-none",
+    bg: "bg-severity-none/15",
+  },
+};
+
+const SeverityCell = ({ value }: { value: string | null | undefined }) => {
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  const style = severityStyles[value as SeverityKey] ?? fallbackStyle;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
+      <span className={`font-medium ${style.text}`}>{value}</span>
+    </span>
+  );
+};
+
+const ExploitCell = ({ value }: { value: string | null | undefined }) => {
+  const v = value ?? "None";
+  const style =
+    exploitStyles[v] ??
+    {
+      dot: "bg-muted-foreground",
+      text: "text-foreground",
+      bg: "bg-secondary",
+    };
+  return (
+    <span
+      className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-xs font-semibold ${style.bg} ${style.text}`}
+    >
+      <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+      {v}
+    </span>
+  );
 };
 
 const VulnerabilitiesTab = () => {
@@ -50,6 +104,44 @@ const VulnerabilitiesTab = () => {
     },
   });
 
+  // Pull CVSS scores + published dates from cve_catalog so we can show
+  // a real numeric column instead of REMEDIATIONS.
+  const cveIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          vulnerabilities
+            .map((v) => v.cve_id)
+            .filter((x): x is string => Boolean(x))
+        )
+      ),
+    [vulnerabilities]
+  );
+
+  const { data: cveCatalog = [] } = useQuery({
+    queryKey: ["cve_catalog_for_vulns", cveIds.length, cveIds.join(",")],
+    enabled: cveIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cve_catalog")
+        .select("cve_id, cvss_v3_score, published_date")
+        .in("cve_id", cveIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const cveMap = useMemo(() => {
+    const m = new Map<string, { score: number | null; published: string | null }>();
+    for (const c of cveCatalog) {
+      m.set(c.cve_id, {
+        score: c.cvss_v3_score ?? null,
+        published: c.published_date ?? null,
+      });
+    }
+    return m;
+  }, [cveCatalog]);
+
   const filtered = vulnerabilities.filter((v) => {
     if (filterRating !== "all" && v.cvss_severity !== filterRating) return false;
     if (filterExploit !== "all" && v.exploit_status !== filterExploit) return false;
@@ -61,23 +153,41 @@ const VulnerabilitiesTab = () => {
   const exploitOptions = ["All Exploits", "Actively Used", "Available", "Unproven", "None"];
   const statusOptions = ["All Status", "Open", "In Progress", "Closed", "Suppressed"];
 
-  const closeAllDrops = () => { setShowRatingDrop(false); setShowExploitDrop(false); setShowStatusDrop(false); };
+  const closeAllDrops = () => {
+    setShowRatingDrop(false);
+    setShowExploitDrop(false);
+    setShowStatusDrop(false);
+  };
 
   const DropdownFilter = ({
-    label, value, options, show, setShow, setValue
+    label,
+    value,
+    options,
+    show,
+    setShow,
+    setValue,
   }: {
-    label: string; value: string; options: string[]; show: boolean;
-    setShow: (v: boolean) => void; setValue: (v: string) => void;
+    label: string;
+    value: string;
+    options: string[];
+    show: boolean;
+    setShow: (v: boolean) => void;
+    setValue: (v: string) => void;
   }) => {
     const allLabel = options[0];
     return (
       <div className="relative">
         <button
-          onClick={() => { closeAllDrops(); setShow(!show); }}
+          onClick={() => {
+            closeAllDrops();
+            setShow(!show);
+          }}
           className="flex items-center gap-2 px-3 py-1.5 text-sm bg-secondary border border-border rounded-lg"
         >
           {value === "all" ? allLabel : value}
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         </button>
         {show && (
           <div className="absolute z-10 mt-1 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
@@ -87,8 +197,14 @@ const VulnerabilitiesTab = () => {
               return (
                 <button
                   key={opt}
-                  onClick={() => { setValue(val); setShow(false); }}
-                  className={cn("w-full text-left px-3 py-1.5 text-sm hover:bg-accent", active ? "bg-primary text-primary-foreground" : "")}
+                  onClick={() => {
+                    setValue(val);
+                    setShow(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-sm hover:bg-accent",
+                    active ? "bg-primary text-primary-foreground" : ""
+                  )}
                 >
                   {opt} {active && "✓"}
                 </button>
@@ -105,9 +221,30 @@ const VulnerabilitiesTab = () => {
       {/* Filter row */}
       <div className="flex items-center gap-4">
         <span className="text-sm text-muted-foreground">Filter by:</span>
-        <DropdownFilter label="Ratings" value={filterRating} options={ratingOptions} show={showRatingDrop} setShow={setShowRatingDrop} setValue={setFilterRating} />
-        <DropdownFilter label="Exploits" value={filterExploit} options={exploitOptions} show={showExploitDrop} setShow={setShowExploitDrop} setValue={setFilterExploit} />
-        <DropdownFilter label="Status" value={filterStatus} options={statusOptions} show={showStatusDrop} setShow={setShowStatusDrop} setValue={setFilterStatus} />
+        <DropdownFilter
+          label="Ratings"
+          value={filterRating}
+          options={ratingOptions}
+          show={showRatingDrop}
+          setShow={setShowRatingDrop}
+          setValue={setFilterRating}
+        />
+        <DropdownFilter
+          label="Exploits"
+          value={filterExploit}
+          options={exploitOptions}
+          show={showExploitDrop}
+          setShow={setShowExploitDrop}
+          setValue={setFilterExploit}
+        />
+        <DropdownFilter
+          label="Status"
+          value={filterStatus}
+          options={statusOptions}
+          show={showStatusDrop}
+          setShow={setShowStatusDrop}
+          setValue={setFilterStatus}
+        />
         <span className="ml-auto text-sm text-muted-foreground">{filtered.length} results</span>
       </div>
 
@@ -131,7 +268,9 @@ const VulnerabilitiesTab = () => {
             <span key={i} className="text-xs px-2 py-1 rounded text-muted-foreground">
               {tag}
               {i === 2 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-severity-high/20 text-severity-high text-xs">1 excluded</span>
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-severity-high/20 text-severity-high text-xs">
+                  1 excluded
+                </span>
               )}
             </span>
           ))}
@@ -146,41 +285,87 @@ const VulnerabilitiesTab = () => {
       <div className="bg-card rounded-lg border border-border overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border">
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">CRITICAL</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">EXPRT RATING</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">CVSS SEVERITY</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">DESCRIPTION</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">VULNERABILITIES</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">EXPLOIT STATUS</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">REMEDIATIONS</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground tracking-wider">ACTIONS</th>
+            <tr className="border-b border-border bg-secondary/30">
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">CVE</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">Exprt Rating</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">CVSS Severity</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">Description</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">Affected</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">Exploit Status</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">CVSS Score</th>
+              <th className="text-left px-5 py-3 text-xs font-bold text-primary uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((v) => (
-              <tr key={v.id} className="border-t border-border hover:bg-secondary/50 transition-colors cursor-pointer" onClick={() => navigate("/scan-results")}>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-severity-critical" />
-                    <span className="text-primary font-mono text-xs">{v.cve_id}</span>
-                  </div>
-                </td>
-                <td className={`px-5 py-3 ${severityStyles[v.exprt_rating] || "text-foreground"}`}>{v.exprt_rating}</td>
-                <td className={`px-5 py-3 ${severityStyles[v.cvss_severity] || "text-foreground"}`}>{v.cvss_severity}</td>
-                <td className="px-5 py-3 text-muted-foreground max-w-[250px] truncate">{v.description}</td>
-                <td className="px-5 py-3 text-foreground text-center">{v.vulnerability_count}</td>
-                <td className="px-5 py-3">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${exploitStyles[v.exploit_status] || "bg-secondary text-foreground"}`}>
-                    ● {v.exploit_status}
-                  </span>
-                </td>
-                <td className="px-5 py-3 text-primary text-center">{v.remediations}</td>
-                <td className="px-5 py-3">
-                  <button className="text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); navigate("/scan-results"); }}><MoreHorizontal className="w-4 h-4" /></button>
+            {filtered.map((v) => {
+              const sev = (v.cvss_severity as SeverityKey) ?? "Info";
+              const dot = severityStyles[sev]?.dot ?? fallbackStyle.dot;
+              const cveInfo = cveMap.get(v.cve_id);
+              const score = cveInfo?.score;
+              const scoreStyle = severityStyles[sev] ?? fallbackStyle;
+              return (
+                <tr
+                  key={v.id}
+                  className="border-t border-border hover:bg-secondary/50 transition-colors cursor-pointer"
+                  onClick={() => navigate("/scan-results")}
+                >
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+                      <span className="text-primary font-mono text-xs font-semibold">
+                        {v.cve_id ?? "—"}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <SeverityCell value={v.exprt_rating} />
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <SeverityCell value={v.cvss_severity} />
+                  </td>
+                  <td className="px-5 py-3.5 text-foreground/85 max-w-[320px]">
+                    <span className="line-clamp-2 leading-snug" title={v.description ?? ""}>
+                      {v.description ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5 text-foreground text-center font-medium tabular-nums">
+                    {v.vulnerability_count ?? 0}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <ExploitCell value={v.exploit_status} />
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {score !== undefined && score !== null ? (
+                      <span
+                        className={`inline-flex items-center justify-center min-w-[44px] px-2 py-1 rounded-md text-xs font-bold tabular-nums bg-secondary border border-border ${scoreStyle.text}`}
+                      >
+                        {Number(score).toFixed(1)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <button
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate("/scan-results");
+                      }}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-5 py-8 text-center text-sm text-muted-foreground">
+                  No vulnerabilities match the current filters.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
