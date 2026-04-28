@@ -8,7 +8,7 @@ import AppSidebar from "@/components/AppSidebar";
 import TopBar from "@/components/TopBar";
 import { cn } from "@/lib/utils";
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || "http://localhost:8090";
+const GATEWAY_URL = "http://localhost:8080";
 
 const tools = [
   { key: "NMAP", label: "Nmap", desc: "Network discovery and port scanning", icon: Globe },
@@ -25,6 +25,7 @@ const NewScan = () => {
   const [description, setDescription] = useState("");
   const [selectedTool, setSelectedTool] = useState("");
   const [options, setOptions] = useState("");
+  const [cookie, setCookie] = useState("");
   const navigate = useNavigate();
 
   const mutation = useMutation({
@@ -46,6 +47,7 @@ const NewScan = () => {
           tool: selectedTool,
           description,
           options,
+          cookie,
         }),
       });
 
@@ -118,6 +120,25 @@ const NewScan = () => {
                   className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
+              {(selectedTool === "SQLMAP" || selectedTool === "FULL") && (
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">
+                    Session Cookie (optional · SQLmap)
+                  </label>
+                  <input
+                    value={cookie}
+                    onChange={(e) => setCookie(e.target.value)}
+                    placeholder="e.g. session=ziy5RMoixrY...60GJUsH4Fi"
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Paste the <code className="font-mono">session=…</code> cookie your browser
+                    uses for the target. SQLmap will impersonate that authenticated session,
+                    matching the manual <code className="font-mono">--cookie</code> workflow.
+                    You can also paste the full <code className="font-mono">name=value; name2=value2</code> string.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -27,8 +27,39 @@ const AdminPanel = () => {
   const { data: scanResults } = useQuery({
     queryKey: ["scan_results"],
     queryFn: async () => {
-      const { data } = await supabase.from("scan_results").select("*").order("created_at", { ascending: false });
-      return data || [];
+      const { data } = await supabase
+        .from("scan_results")
+        .select("*")
+        .order("created_at", { ascending: false });
+      return (data as Array<Record<string, any>>) || [];
+    },
+  });
+
+  const scanUserIds = Array.from(
+    new Set(
+      (scanResults || [])
+        .map((s) => (s.user_id as string | null) || "")
+        .filter((v) => v.length > 0)
+    )
+  );
+
+  const { data: userIdToEmail } = useQuery({
+    queryKey: ["scan_creator_emails", scanUserIds],
+    enabled: scanUserIds.length > 0,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("get_user_emails", {
+        user_ids: scanUserIds,
+      });
+      if (error) {
+        console.warn("get_user_emails RPC failed:", error.message);
+        return {} as Record<string, string>;
+      }
+      const map: Record<string, string> = {};
+      for (const row of (data || []) as Array<{ user_id: string; email: string }>) {
+        if (row.user_id && row.email) map[row.user_id] = row.email;
+      }
+      return map;
     },
   });
 
@@ -64,6 +95,21 @@ const AdminPanel = () => {
   });
 
   const activeScans = scanResults?.filter((s) => s.status === "running").length || 0;
+
+  const emailToName: Record<string, string> = {};
+  for (const u of users || []) {
+    if (u.email) emailToName[u.email.toLowerCase()] = u.name || u.email;
+  }
+
+  const getCreatedBy = (scan: Record<string, any>): string => {
+    const userId: string = scan.user_id || "";
+    if (!userId) return "Unknown";
+    const email = userIdToEmail?.[userId];
+    if (email) {
+      return emailToName[email.toLowerCase()] || email;
+    }
+    return "Unknown";
+  };
 
   const stats = [
     { label: "TOTAL USERS", value: users?.length || 0, icon: Users, color: "text-primary" },
@@ -259,36 +305,38 @@ const AdminPanel = () => {
 
           {/* Recent Scans */}
           <div className="bg-card border border-border rounded-xl p-5 mb-6">
-            <h2 className="text-foreground font-semibold mb-4">Recent Scans (All Users)</h2>
-            <table className="w-full">
-              <thead>
-                <tr className="text-muted-foreground text-xs uppercase tracking-wider">
-                  <th className="text-left py-3 px-2">Name</th>
-                  <th className="text-left py-3 px-2">Target</th>
-                  <th className="text-left py-3 px-2">Tool</th>
-                  <th className="text-left py-3 px-2">Status</th>
-                  <th className="text-left py-3 px-2">Created By</th>
-                  <th className="text-left py-3 px-2">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scanResults?.map((scan) => (
-                  <tr key={scan.id} className="border-t border-border">
-                    <td className="py-3 px-2 text-foreground font-medium">{scan.name}</td>
-                    <td className="py-3 px-2 text-muted-foreground text-sm">{scan.target}</td>
-                    <td className="py-3 px-2 text-primary font-semibold text-sm">{scan.tool.toUpperCase()}</td>
-                    <td className="py-3 px-2">
-                      <span className="flex items-center gap-1.5 text-sm">
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-green-400">Low</span>
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 text-muted-foreground text-sm">jehanmoshle@gmail.com</td>
-                    <td className="py-3 px-2 text-muted-foreground text-sm">{formatDateTime(scan.created_at)}</td>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-foreground font-semibold">Recent Scans (All Users)</h2>
+              {scanResults && scanResults.length > 7 && (
+                <span className="text-xs text-muted-foreground">
+                  Showing {scanResults.length} scans — scroll inside table
+                </span>
+              )}
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: "26rem" }}>
+              <table className="w-full">
+                <thead className="sticky top-0 bg-card z-10">
+                  <tr className="text-muted-foreground text-xs uppercase tracking-wider">
+                    <th className="text-left py-3 px-2">Name</th>
+                    <th className="text-left py-3 px-2">Target</th>
+                    <th className="text-left py-3 px-2">Tool</th>
+                    <th className="text-left py-3 px-2">Created By</th>
+                    <th className="text-left py-3 px-2">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {scanResults?.map((scan) => (
+                    <tr key={scan.id} className="border-t border-border">
+                      <td className="py-3 px-2 text-foreground font-medium">{scan.name}</td>
+                      <td className="py-3 px-2 text-muted-foreground text-sm">{scan.target}</td>
+                      <td className="py-3 px-2 text-primary font-semibold text-sm">{scan.tool.toUpperCase()}</td>
+                      <td className="py-3 px-2 text-muted-foreground text-sm">{getCreatedBy(scan)}</td>
+                      <td className="py-3 px-2 text-muted-foreground text-sm">{formatDateTime(scan.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* System Logs */}

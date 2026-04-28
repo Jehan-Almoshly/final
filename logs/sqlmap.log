@@ -1,5 +1,9 @@
-[SQLMAP-SRV] INFO:     Started server process [124035]
+[SQLMAP-SRV] INFO:     Started server process [171584]
 [SQLMAP-SRV] INFO:     Waiting for application startup.
 [SQLMAP-SRV] INFO:     Application startup complete.
 [SQLMAP-SRV] INFO:     Uvicorn running on http://0.0.0.0:8003 (Press CTRL+C to quit)
-[SQLMAP-SRV] INFO:     127.0.0.1:60642 - "GET /health HTTP/1.1" 200 OK
+[SQLMAP-SRV] INFO:     127.0.0.1:34468 - "GET /health HTTP/1.1" 200 OK
+[SQLMAP-SRV] INFO:     Shutting down
+[SQLMAP-SRV] INFO:     Waiting for application shutdown.
+[SQLMAP-SRV] INFO:     Application shutdown complete.
+[SQLMAP-SRV] INFO:     Finished server process [171584]

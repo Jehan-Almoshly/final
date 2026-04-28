@@ -4,7 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import AppSidebar from "@/components/AppSidebar";
 import TopBar from "@/components/TopBar";
-import { Eye, Trash2, CheckCircle2, Loader2, Clock, AlertCircle, ChevronDown, ChevronUp, XCircle } from "lucide-react";
+import { Eye, Trash2, CheckCircle2, Loader2, Clock, AlertCircle, ChevronDown, ChevronUp, Pause, Play, PauseCircle } from "lucide-react";
+import { toast } from "sonner";
+
+const GATEWAY_URL = "http://localhost:8080";
 
 interface ScanResult {
   id: string;
@@ -25,29 +28,16 @@ interface ScanResult {
   created_at: string;
 }
 
-const STALE_AFTER_MINUTES = 5;
-
-function lastHeartbeatAgeMinutes(scan: ScanResult): number | null {
-  if (scan.status !== "running") return null;
-  const out = scan.raw_output || "";
-  const match = out.match(/Last heartbeat:\s*([0-9T:.\-+Z]+)/);
-  const tsStr = match ? match[1] : scan.started_at;
-  if (!tsStr) return null;
-  const ts = new Date(tsStr).getTime();
-  if (isNaN(ts)) return null;
-  return (Date.now() - ts) / 60000;
-}
-
-function isStale(scan: ScanResult): boolean {
-  const age = lastHeartbeatAgeMinutes(scan);
-  return age !== null && age > STALE_AFTER_MINUTES;
-}
-
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   running: {
     label: "Running",
     icon: <Loader2 className="w-3 h-3 animate-spin" />,
     className: "bg-blue-500/20 text-blue-400",
+  },
+  paused: {
+    label: "Paused",
+    icon: <PauseCircle className="w-3 h-3" />,
+    className: "bg-muted text-muted-foreground",
   },
   completed: {
     label: "Completed",
@@ -88,6 +78,27 @@ const ScanResults = () => {
 
   const hasRunningScans = scans.some((s) => s.status === "running" || s.status === "pending");
 
+  const pauseResumeMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "pause" | "resume" }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Not authenticated");
+      const res = await fetch(`${GATEWAY_URL}/scan/${id}/${action}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.detail || `Failed to ${action} scan`);
+      return body;
+    },
+    onSuccess: (_data, vars) => {
+      toast.success(vars.action === "pause" ? "Scan paused" : "Scan resumed");
+      queryClient.invalidateQueries({ queryKey: ["scan_results"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to toggle scan");
+    },
+  });
+
   const selectedScanUpdated = selectedScan
     ? (scans.find((s) => s.id === selectedScan.id) ?? selectedScan)
     : null;
@@ -100,28 +111,6 @@ const ScanResults = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan_results"] });
       setSelectedScan(null);
-    },
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: async (scan: ScanResult) => {
-      const note =
-        (scan.raw_output ? scan.raw_output + "\n\n" : "") +
-        `[user] Manually marked as failed at ${new Date().toISOString()} ` +
-        `(server appears stopped or scan stuck).`;
-      const payload = {
-        status: "failed",
-        raw_output: note,
-        completed_at: new Date().toISOString(),
-      } as never;
-      const { error } = await supabase
-        .from("scan_results")
-        .update(payload)
-        .eq("id", scan.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scan_results"] });
     },
   });
 
@@ -173,7 +162,6 @@ const ScanResults = () => {
               ) : (
                 scans.map((scan) => {
                   const st = getStatus(scan.status);
-                  const stale = isStale(scan);
                   return (
                     <div
                       key={scan.id}
@@ -184,18 +172,12 @@ const ScanResults = () => {
                     >
                       <div className="flex items-start justify-between">
                         <div className="space-y-2">
-                          <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-3">
                             <span className="font-semibold text-foreground">{scan.name}</span>
                             <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${st.className}`}>
                               {st.icon}
                               {st.label}
                             </span>
-                            {stale && (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
-                                <AlertCircle className="w-3 h-3" />
-                                Stale (no heartbeat &gt; {STALE_AFTER_MINUTES}m)
-                              </span>
-                            )}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span>Target: <span className="font-mono text-foreground">{scan.target}</span></span>
@@ -220,7 +202,12 @@ const ScanResults = () => {
                                 <span className="w-2 h-2 rounded-full bg-blue-500" />
                                 <span className="text-foreground">{scan.low_count}</span>
                               </span>
-                              <span className="text-muted-foreground">{scan.total_findings} findings</span>
+                              <span
+                                className="text-muted-foreground"
+                                title="CVE-classified findings (sum of severity buckets). Raw tool output may contain more informational items — see Raw Output."
+                              >
+                                {scan.total_findings} classified findings
+                              </span>
                             </div>
                           )}
                           {scan.status === "running" && (
@@ -228,18 +215,35 @@ const ScanResults = () => {
                               <div className="bg-blue-500 h-full rounded-full animate-pulse" style={{ width: "70%" }} />
                             </div>
                           )}
+                          {scan.status === "paused" && (
+                            <div className="w-48 bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-muted-foreground/40 h-full rounded-full" style={{ width: "70%" }} />
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          {scan.status === "running" && (
+                        <div className="flex items-center gap-1">
+                          {(scan.status === "running" || scan.status === "paused") && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                cancelMutation.mutate(scan);
+                                pauseResumeMutation.mutate({
+                                  id: scan.id,
+                                  action: scan.status === "running" ? "pause" : "resume",
+                                });
                               }}
-                              title="Mark as failed (use when server is stopped or scan is stuck)"
-                              className="text-orange-400 hover:text-orange-300 transition-colors p-1"
+                              disabled={pauseResumeMutation.isPending}
+                              title={scan.status === "running" ? "Pause scan" : "Resume scan"}
+                              className={`transition-colors p-1 disabled:opacity-50 ${
+                                scan.status === "running"
+                                  ? "text-blue-400 hover:text-blue-300"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
                             >
-                              <XCircle className="w-5 h-5" />
+                              {scan.status === "running" ? (
+                                <Pause className="w-5 h-5" />
+                              ) : (
+                                <Play className="w-5 h-5" />
+                              )}
                             </button>
                           )}
                           {userRole === "admin" && (
@@ -308,8 +312,11 @@ const ScanResults = () => {
                         </div>
                       )}
                       <div>
-                        <p className="text-xs text-muted-foreground">Total Findings</p>
+                        <p className="text-xs text-muted-foreground">Classified Findings</p>
                         <p className="text-foreground font-semibold">{selectedScanUpdated.total_findings}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Sum of severity buckets (CVE-classified). Tool may have produced more raw items — see Raw Output.
+                        </p>
                       </div>
                     </div>
 
@@ -331,36 +338,14 @@ const ScanResults = () => {
                       </div>
                     )}
 
-                    {selectedScanUpdated.status === "running" && (() => {
-                      const stale = isStale(selectedScanUpdated);
-                      const age = lastHeartbeatAgeMinutes(selectedScanUpdated);
-                      return stale ? (
-                        <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs text-orange-400 space-y-2">
-                          <div className="flex items-center gap-2 font-medium">
-                            <AlertCircle className="w-3 h-3" />
-                            Scan appears stuck (no heartbeat for {age?.toFixed(0)} min)
-                          </div>
-                          <p className="text-orange-400/80">
-                            The scan server is likely stopped. Click below to mark this scan as failed.
-                          </p>
-                          <button
-                            onClick={() => cancelMutation.mutate(selectedScanUpdated)}
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 font-medium"
-                          >
-                            <XCircle className="w-3 h-3" />
-                            Mark as failed
-                          </button>
+                    {selectedScanUpdated.status === "running" && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-400">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Scan in progress. Updating automatically...
                         </div>
-                      ) : (
-                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-400">
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Scan in progress. Updating automatically...
-                            {age !== null && ` (last heartbeat ${age.toFixed(0)}m ago)`}
-                          </div>
-                        </div>
-                      );
-                    })()}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground space-y-3">
